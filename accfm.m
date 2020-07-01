@@ -394,7 +394,8 @@ function network = apply_recursion(network, settings, i, k, Gnode_parent)
             if ~conditions_changed
                 
                 % get exceeded branches, buses and generators
-                exceeded_lines = find(round(max([sqrt(network.branch(:, PF).^2 + network.branch(:, QF).^2) sqrt(network.branch(:, PT).^2 + network.branch(:, QT).^2)], [], 2), 5) > round(network.branch(:, RATE_A) * 1.01, 5));
+                %exceeded_lines = find(round(max([sqrt(network.branch(:, PF).^2 + network.branch(:, QF).^2) sqrt(network.branch(:, PT).^2 + network.branch(:, QT).^2)], [], 2), 5) > round(network.branch(:, RATE_A) * 1.01, 5));
+                exceeded_lines = find(round(mean([sqrt(network.branch(:, PF).^2 + network.branch(:, QF).^2) sqrt(network.branch(:, PT).^2 + network.branch(:, QT).^2)], 2), 5) > round(network.branch(:, RATE_A) * 1.01, 5));
                 exceeded_buses = find(network.bus(:, BUS_TYPE) ~= NONE & (round(network.bus(:, VM), 3) < network.bus(:, VMIN)) & (network.bus(:, PD) > 0 | network.bus(:, QD) > 0));
                 exceeded_gens = find(network.gen(:, QG) - network.gen(:, QMIN) < -abs(settings.Q_tolerance * network.gen(:, QMIN)) | network.gen(:, QG) - network.gen(:, QMAX) > abs(settings.Q_tolerance * network.gen(:, QMAX)));
                 
@@ -579,75 +580,89 @@ function [network, tripped_lines] = trip_nodes(network, nodes)
 end
 
 function network = distribute_slack(network, network_prev, settings)
+% DISTRIBUTE_SLACK distributes generation at slack bus to all generators
+% depending on their generation capacity.
+
     define_constants;
     
+    % find all active generators
     gens = find(network.gen(:, GEN_STATUS) > 0);
+    
+    % find the slack generators
     slack_gen = get_slack_gen(network);
-    %slack_buses = network.bus(network.bus(:, BUS_TYPE) == REF, BUS_I);
-    %Pslack = sum(network.gen(ismember(network.gen(:, GEN_BUS), slack_buses), PG));
-    %Pslack = network.gen(slack_gen, [PG PMIN PMAX]);
     
-    
-    %if Pslack > sum(network.gen(ismember(network.gen(:, GEN_BUS), slack_buses), PMAX)) || Pslack < sum(network.gen(ismember(network.gen(:, GEN_BUS), slack_buses), PMIN))
-    %if Pslack(:, 1) < Pslack(:, 2) || Pslack(:, 1) > Pslack(:, 3)
-    
+    % determine the change in slack generation since previous generation
     slack_change = network.gen(slack_gen, PG) - network_prev.gen(slack_gen, PG);
-        
-%         slack_overhead = zeros(size(slack_gen));
-%         for k = 1:length(slack_gen)
-%             if network.gen(slack_gen(k), PG) > network.gen(slack_gen(k), PMAX)
-%                 slack_overhead(k) = network.gen(slack_gen(k), PG) - network.gen(slack_gen(k), PMAX);
-%             else
-%                 slack_overhead(k) = network.gen(slack_gen(k), PG) - network.gen(slack_gen(k), PMIN);
-%             end
-%         end
     
-        factors = network.gen(gens, PMAX) / sum(network.gen(gens, PMAX));
-        delta = factors * slack_change; %Pslack; slack_overhead
+    % determines the share of each generator on the entire capacity
+    factors = network.gen(gens, PMAX) / sum(network.gen(gens, PMAX));
+    
+    % the generation change for each generator
+    delta = factors * slack_change;
 
-        network.gen(gens, PG) = network.gen(gens, PG) + delta;
-        network = runpf(network, settings.mpopt);
-        network.pf_count = network.pf_count + 1;
+    % apply the change
+    network.gen(gens, PG) = network.gen(gens, PG) + delta;
+    
+    % run a power flow
+    network = runpf(network, settings.mpopt);
+    network.pf_count = network.pf_count + 1;
 
-        while ~isempty(find(network.gen(:, PG) > network.gen(:, PMAX), 1))
-            overhead = sum(network.gen(network.gen(:, PG) > network.gen(:, PMAX), PG) - network.gen(network.gen(:, PG) > network.gen(:, PMAX), PMAX));
-            network.gen(network.gen(:, PG) > network.gen(:, PMAX), PG) = network.gen(network.gen(:, PG) > network.gen(:, PMAX), PMAX);
+    % it might be that some generators now exceed their capacity
+    while ~isempty(find(network.gen(:, PG) > network.gen(:, PMAX), 1))
+        % this is the total exceeding generation
+        overhead = sum(network.gen(network.gen(:, PG) > network.gen(:, PMAX), PG) - network.gen(network.gen(:, PG) > network.gen(:, PMAX), PMAX));
+        
+        % set the generators that exceed their capacity to their maximum
+        % output
+        network.gen(network.gen(:, PG) > network.gen(:, PMAX), PG) = network.gen(network.gen(:, PG) > network.gen(:, PMAX), PMAX);
 
-            oh_factor = overhead / sum(network.gen(network.gen(:, PG) < network.gen(:, PMAX), PG));
-            network.gen(network.gen(:, PG) < network.gen(:, PMAX), PG) = round((1 + oh_factor) * network.gen(network.gen(:, PG) < network.gen(:, PMAX), PG), 4);
-        end
+        % the overhead generation is shared over the remaining generators
+        oh_factor = overhead / sum(network.gen(network.gen(:, PG) < network.gen(:, PMAX), PG));
+        network.gen(network.gen(:, PG) < network.gen(:, PMAX), PG) = round((1 + oh_factor) * network.gen(network.gen(:, PG) < network.gen(:, PMAX), PG), 4);
+        
+        % this is repeated until there is no exceeding generation
+    end
 
-        network = runpf(network, settings.mpopt);
-        network.pf_count = network.pf_count + 1;
-    %end
+    % run another power flow
+    network = runpf(network, settings.mpopt);
+    network.pf_count = network.pf_count + 1;
 end
 
 function slack_gen = get_slack_gen(network)
+% GET_SLACK_GEN returns the indices of the slack generators
+
     define_constants;
-    
+
+    % find all slack buses
     slack_bus = network.bus(network.bus(:, BUS_TYPE) == REF, BUS_I);
+    
     slack_gen = zeros(size(slack_bus));
     
+    % find all active generators and their buses
     on = find(network.gen(:, GEN_STATUS) > 0);
     gbus = network.gen(on, GEN_BUS);
     
+    % go through every slack bus
     for k = 1:length(slack_bus)
+        % the slack generator is the first active generator
         temp = find(gbus == slack_bus(k));
         slack_gen(k) = on(temp(1));
     end
 end
 
 function [network, Gnode_parent] = apply_vcls(network, settings, Gnode_parent, i, k)
-    define_constants;
+% APPLY_VLCS tries to make an unsolvable power flow solvable by applying
+% voltage collapse load shedding
+% 
+% There are two reasons why a power flow might not be solvable: Q limits 
+% exceeded or voltage collapse. This function runs an OPF to find the loads
+% that need to be shed in order to make the power flow solvable again.
     
-    % reason 1: Q limits exceeded
-    % reason 2: voltage collapse
-    % run an opf to resolve
+    define_constants;
 
-    % make a copy of the network, get rid of some result columns
+    % make a copy of the network, get total load
     network_disp = network;
     load_initial = sum(network.bus(:, PD));
-    %network_disp.gen = network_disp.gen(:, 1:21);
 
     % ignore line constraints
     network_disp.branch(:, RATE_A) = 0;
@@ -655,22 +670,18 @@ function [network, Gnode_parent] = apply_vcls(network, settings, Gnode_parent, i
     % reduce lower voltage limit
     network_disp.bus(:, VMIN) = 0.2;
     
-    % if there is no reference bus, set maximum bus voltage to current
-    % voltage
+    % if there is no slack bus, set maximum bus voltage to current
+    % voltage. This might be the result of previous O/UXL
     if isempty(find(network_disp.bus(:, BUS_TYPE) == REF, 1))
         network_disp.bus(:, VMAX) = network_disp.bus(:, VM);
         network_disp.gen(network_disp.gen(:, QG) <= network_disp.gen(:, QMIN), [QMIN QMAX]) = network_disp.gen(network_disp.gen(:, QG) <= network_disp.gen(:, QMIN), [QMIN QMIN]);
         network_disp.gen(network_disp.gen(:, QG) >= network_disp.gen(:, QMAX), [QMIN QMAX]) = network_disp.gen(network_disp.gen(:, QG) >= network_disp.gen(:, QMAX), [QMAX QMAX]);
     end
 
-    % force ref bus
+    % force a slack bus to be present
     network_disp = add_reference_bus(network_disp, 1);
 
     % convert all loads to dispatchable loads
-    %network_disp.gen(:, [PMIN PMAX]) = [0.9 1.1] .* network_disp.gen(:, PG);
-    %network_disp.gen(:, PMIN) = 0.9 * network_disp.gen(:, PG);
-    %network_disp.gen(network_disp.gen(:, PMIN) < 0, PMIN) = 0;
-    %network_disp.gen(:, PMAX) = min([10000 + 1.1 * network_disp.gen(:, PG) network_disp.gen(:, PMAX)], [], 2);
     network_disp = load2disp(network_disp);
 
     % use a faster OPF solver if available
@@ -798,8 +809,29 @@ function network = add_reference_bus( network, ignore_type )
     
     % go through every island
     for i = 1:size(groups, 2)
+        ref_bus = intersect(network.bus(groups{i}, BUS_I), network.bus(network.bus(:, BUS_TYPE) == REF, BUS_I));
+        
         % if there is no reference bus in an island
-        if size(network.bus(network.bus(groups{i}, BUS_TYPE) == REF), 1) == 0
+        %if size(network.bus(network.bus(groups{i}, BUS_TYPE) == REF), 1) == 0
+
+        if length(ref_bus) == 1
+            %ref_bus = network.bus(network.bus(:, BUS_TYPE) == REF, BUS_I);
+            %ref_bus = network.bus(groups{i}(network.bus(groups{i}, BUS_TYPE) == REF), BUS_I);
+            gens = find(ismember(network.gen(:, GEN_BUS), network.bus(groups{i}, BUS_I)) & ismember(network.gen(:, GEN_BUS), ref_bus) & network.gen(:, GEN_STATUS) == 1, 1);
+            
+            % there is no active generator at the ref bus
+            if isempty(gens)
+                %network.bus(network.bus(:, BUS_TYPE) == REF, BUS_TYPE) = PQ;
+                network.bus(ismember(network.bus(:, BUS_I), ref_bus), BUS_TYPE) = PQ;
+                network = add_reference_bus(network, 1);
+            end
+        else
+            network.bus(ismember(network.bus(:, BUS_I), ref_bus), BUS_TYPE) = PV;
+        end
+        
+        ref_bus = intersect(network.bus(groups{i}, BUS_I), network.bus(network.bus(:, BUS_TYPE) == REF, BUS_I));
+        
+        if isempty(ref_bus)
             
             % get all active and generating buses in this island
             gens = find(ismember(network.gen(:, GEN_BUS), network.bus(groups{i}, BUS_I)) & network.gen(:, GEN_STATUS) == 1);
@@ -821,14 +853,6 @@ function network = add_reference_bus( network, ignore_type )
                 % make it reference bus
                 network.bus(network.bus(:, BUS_I) == gen_bus(max_gen_bus), BUS_TYPE) = REF;
 
-            end
-        else
-            ref_bus = network.bus(network.bus(:, BUS_TYPE) == REF, 1);
-            gens = find(ismember(network.gen(:, GEN_BUS), network.bus(groups{i}, BUS_I)) & ismember(network.gen(:, GEN_BUS), ref_bus) & network.gen(:, GEN_STATUS) == 1, 1);
-            
-            if isempty(gens)
-                network.bus(network.bus(:, BUS_TYPE) == REF, BUS_TYPE) = PQ;
-                network = add_reference_bus(network, 1);
             end
         end
     end
