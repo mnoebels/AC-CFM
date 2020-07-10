@@ -7,10 +7,10 @@ accfm_with_lognormal_contingency.m
 batch.m
 dccfm.m
 analyse_accfm_result.m
-accfm_branch_scenarios.m
 extract_cascade_metrics.m
 *.log
 *.txt
 plfit.m
 accfm_get_flep.m
 *.asv
+accfm_with_logdist_contingency.m
