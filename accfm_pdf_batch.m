@@ -1,4 +1,4 @@
-function accfm_pdf_batch(network, pdf, alpha, number_of_scenarios, output_file)
+function result = accfm_pdf_batch(network, pdf, alpha, number_of_scenarios, output_file)
 % batch processing for the AC Cascading Fault Model following a probability
 % distribution
 %   accfm_pdf_batch(network, pdf, alpha, number_of_scenarios, output_file) 
@@ -48,8 +48,8 @@ function accfm_pdf_batch(network, pdf, alpha, number_of_scenarios, output_file)
 	settings.max_iterations = 100;
 	settings.DC_fallback = 0;
     
+    % run an initial PF to see if the case is valid
     network = runpf(network, settings.mpopt);
-    
     if ~network.success
         error("Initial PF of network failed, please check network case");
     end
@@ -57,5 +57,7 @@ function accfm_pdf_batch(network, pdf, alpha, number_of_scenarios, output_file)
 	% run AC-CFM
 	result = accfm_branch_scenarios(network, scenarios, settings);
 
-	% save result struct
-	save(output_file, 'result');
+    if ~exist('output_file', 'var')
+        % save result struct
+        save(output_file, 'result');
+    end
