@@ -43,6 +43,10 @@ function result = accfm_branch_scenarios(network, scenarios, settings)
     result.network = network;
     result.settings = settings;
     
+    if settings.keep_networks_after_cascade
+        networks_after_cascade = cell(number_of_scenarios, 1);
+    end
+    
     %% the loop
     % output progress if not running on cluster
     startTime = tic;
@@ -114,6 +118,10 @@ function result = accfm_branch_scenarios(network, scenarios, settings)
             computational(i, :) = [result_cascade.pf_count result_cascade.elapsed];
             vcls(i, :) = [length(vc_edges) mean(vc_island_sizes) length(opf_edges) mean(opf_island_sizes) length(dc_edges) mean(dc_lines)];
 
+            if settings.keep_networks_after_cascade
+                networks_after_cascade{i} = struct('version', result_cascade.version, 'baseMVA', result_cascade.baseMVA, 'bus', result_cascade.bus, 'branch', result_cascade.branch, 'gen', result_cascade.gen, 'gencost', result_cascade.gencost);
+            end
+            
             if isdeployed
                 fprintf(' (%.2f%%)\n', ls_i(end) * 100);
             end
@@ -147,4 +155,8 @@ function result = accfm_branch_scenarios(network, scenarios, settings)
     result.load_at_time = load_at_time;
     result.computational = computational;
     result.vcls = vcls;
+    
+    if settings.keep_networks_after_cascade
+        result.networks_after_cascade = networks_after_cascade;
+    end
 end

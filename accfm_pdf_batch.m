@@ -1,4 +1,4 @@
-function result = accfm_pdf_batch(network, pdf, alpha, number_of_scenarios, output_file)
+function result = accfm_pdf_batch(network, pdf, alpha, number_of_scenarios, settings, output_file)
 % batch processing for the AC Cascading Fault Model following a probability
 % distribution
 %   accfm_pdf_batch(network, pdf, alpha, number_of_scenarios, output_file) 
@@ -31,6 +31,11 @@ function result = accfm_pdf_batch(network, pdf, alpha, number_of_scenarios, outp
     if ~isnumeric(number_of_scenarios)
         number_of_scenarios = str2double(number_of_scenarios);
     end
+    
+    % model settings
+    if ~exist('settings', 'var') || ~isstruct(settings)
+        settings = get_default_settings;
+    end
 	
     % create the initial contingecies
 	rng('shuffle');
@@ -39,14 +44,9 @@ function result = accfm_pdf_batch(network, pdf, alpha, number_of_scenarios, outp
 	end
 
 	scenarios = cell(number_of_scenarios, 1);
-	for i = 1:number_of_scenarios
+    for i = 1:number_of_scenarios
 		scenarios{i} = round(rand(contingencies(i), 1) * size(network.branch, 1));
-	end
-
-	% model settings
-	settings = get_default_settings();
-	settings.max_iterations = 100;
-	settings.DC_fallback = 0;
+    end
     
     % run an initial PF to see if the case is valid
     network = runpf(network, settings.mpopt);
@@ -57,7 +57,7 @@ function result = accfm_pdf_batch(network, pdf, alpha, number_of_scenarios, outp
 	% run AC-CFM
 	result = accfm_branch_scenarios(network, scenarios, settings);
 
-    if ~exist('output_file', 'var')
+    if exist('output_file', 'var')
         % save result struct
         save(output_file, 'result');
     end
