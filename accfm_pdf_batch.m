@@ -73,11 +73,11 @@ function result = accfm_pdf_batch(network, pdf, alpha, number_of_scenarios, sett
             showTimeToCompletion;
             p = parfor_progress( number_of_scenarios );
         end
-    
-        result(number_of_scenarios) = struct('version', [], 'baseMVA', [], 'bus', [], 'gen', [], 'branch', [], 'gencost', [], 'gentype', [], 'genfuel', [], 'bus_name', [], 'order', [], 'et', [], 'success', [], 'iterations', [], 'bus_id', [], 'gen_id', [], 'branch_id', [], 'branch_tripped', [], 'bus_tripped', [], 'bus_uvls', [], 'bus_ufls', [], 'gen_tripped', [], 'load', [], 'generation_before', [], 'pf_count', [], 'G', [], 'ls_total', [], 'ls_ufls', [], 'ls_uvls', [], 'ls_vcls', [], 'ls_opf', [], 'ls_tripped', [], 'elapsed', []);
         
+        result(number_of_scenarios) = struct('version', [], 'baseMVA', [], 'bus', [], 'gen', [], 'branch', [], 'gencost', [], 'success', [], 'branch_tripped', [], 'bus_tripped', [], 'bus_uvls', [], 'bus_ufls', [], 'gen_tripped', [], 'load', [], 'pf_count', [], 'ls_total', [], 'ls_ufls', [], 'ls_uvls', [], 'ls_vcls', [], 'ls_opf', [], 'ls_tripped', [], 'elapsed', []);
+    
         parfor i = 1:number_of_scenarios
-            %output progress if not running on cluster
+            % output progress if not running on cluster
             if ~isdeployed
                 p = parfor_progress;
                 showTimeToCompletion( p/100, [], [], startTime );
@@ -90,8 +90,35 @@ function result = accfm_pdf_batch(network, pdf, alpha, number_of_scenarios, sett
                 error("Initial PF of network failed, please check network case");
             end
             
-            % run AC-CFM
-            result(i) = accfm(network_i, struct('branches', scenarios{i}), settings);
+            try
+                % run AC-CFM
+                result_i = accfm(network_i, struct('branches', scenarios{i}), settings);
+                result(i).version = result_i.version;
+                result(i).baseMVA = result_i.baseMVA;
+                result(i).bus = result_i.bus;
+                result(i).branch = result_i.branch;
+                result(i).gen = result_i.gen;
+                result(i).gencost = result_i.gencost;
+                result(i).success = result_i.success;
+                result(i).branch_tripped = result_i.branch_tripped;
+                result(i).bus_tripped = result_i.bus_tripped;
+                result(i).gen_tripped = result_i.gen_tripped;
+                result(i).bus_uvls = result_i.bus_uvls;
+                result(i).bus_ufls = result_i.bus_ufls;
+                result(i).load = result_i.load;
+                result(i).pf_count = result_i.pf_count;
+                result(i).ls_total = result_i.ls_total;
+                result(i).ls_ufls = result_i.ls_ufls;
+                result(i).ls_uvls = result_i.ls_uvls;
+                result(i).ls_vcls = result_i.ls_vcls;
+                result(i).ls_opf = result_i.ls_opf;
+                result(i).ls_tripped = result_i.ls_tripped;
+                result(i).elapsed = result_i.elapsed;
+                
+                result(i).contingency = scenarios{i};
+            catch
+                result(i).success = 0;
+            end
         end
     end
 
