@@ -8,7 +8,6 @@ The following steps will guide you through getting AC-CFM run on your computer.
 
 ### Prerequisites
 
-This is an example of how to list things you need to use the software and how to install them.
 * Matlab 2019a or later is recommended to run AC-CFM.
 
 * Matpower 7.1 or later is required to run AC-CFM. Please follow the [instructions on the Matpower Website for installation](https://matpower.org/about/get-started/).
