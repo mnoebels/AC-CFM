@@ -1,6 +1,12 @@
 # AC-CFM
 AC cascading failure model based on MATPOWER for resilience analysis of power networks.
 
+## Licensing and Citing
+
+We request that publications derived from the use of AC-CFM explicitly acknowledge that fact by citing the following publication:
+
+Noebels, M., Preece, R., Panteli, M. "An AC Cascading Failure Model for Resilience Analysis in Power Networks," IEEE Systems Journal (accepted).
+
 <!-- GETTING STARTED -->
 ## Getting Started
 
@@ -32,7 +38,9 @@ git clone https://github.com/mnoebels/AC-CFM.git
 <!-- USAGE EXAMPLES -->
 ## Usage
 
-Use the following example to model the cascade following a single line outage in the IEEE 39-bus test network:
+### Single contingency
+
+Use the following example to model the cascade following a single contingency (here: failure of line 9 in the IEEE 39-bus test network):
 ```
 % load default settings
 settings = get_default_settings();
@@ -40,7 +48,7 @@ settings = get_default_settings();
 % enable verbose output – just for testing
 settings.verbose = 1;
  
-% model outage of line 9
+% model outage of line 9; this can also be an array of branch indices
 initial_contingency = 9;
  
 % apply the model
@@ -116,6 +124,49 @@ Load shedding non-converging OPF: 0.00%
 Load shedding tripped: 18.59%
 ```
 
+### Batch processing
+
+AC-CFM comes with two routines that can be used for batch processing of large numbers of contingencies, depending if the contingencies are known, or whether they should be sampled from a probability distribution. Both functions make use of the parallel processing capabilities of Matlab using parfor loops.
+
+If the contingencies are known, the following code runs AC-CFM on the specified network for every contingency specified in scenarios. scenarios is a cell array.
+
+```result = accfm_branch_scenarios(network, scenarios, settings)```
+
+It returns a struct containing the results, tripped buses, lines, generators, etc. for each contingency.
+
+If contingencies should be sampled from a probability distribution, use the following code. pdf is the name of a probability distribution (at the moment, only "zipf" is implemented). alpha is the exponent of the Zipf distribution. number_of_scenarios specified the number of contingencies to be sampled. If output_file is specified, the results are saved in a file with the given filename.
+
+```result = accfm_pdf_batch(network, pdf, alpha, number_of_scenarios, settings, output_file)```
+
+
+### Settings
+
+Behavior of AC-CFM can be adjusted via the settings struct.
+
+Load default settings:
+```settings = get_default_settings();```
+
+The following options are available:
+
+* verbose (0 or 1): If set to 0, suppress model output.
+
+* mpopt: Matpower options struct. Please refer to the Matpower docs for details.
+
+* max_recursion_depth (integer): Maximum recursion depth. An error is thrown if this is reached and the cascade has still not come to an end.
+
+* uvls_per_step (0 to 1): Ratio of load that is shed per UVLS step.
+
+* uvls_max_steps (integer): Maximum number of UVLS steps before all loads at a bus are tripped.
+
+* dP_limit (0 to 1): Maximum generation imbalance before UFLS is applied.
+
+* P_overhead (0 to 1): Ratio of generation overhead when applying UFLS, mainly to meet transmission losses.
+
+* Q_tolerance (0 to 1): Ratio of reactive power limits that can be exceeded before O/UXL is applied.
+
+* DC_fallback (0 or 1): If set to 0, islands black out if AC-OPF does not converge. This usually happens in highly imbalanced islands. If set to 1, a fallback to DC-OPF is possible.
+
+* keep_networks_after_cascade (0 or 1): In batch processing, keep final network struct for each contingency. This significantly increases required memory.
 
 <!-- Troubleshooting -->
 ## Troubleshooting
