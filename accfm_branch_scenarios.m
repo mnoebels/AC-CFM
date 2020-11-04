@@ -5,6 +5,11 @@ function result = accfm_branch_scenarios(network, scenarios, settings)
 %   result_cascade = accfm_branch_scenarios( ___ ) returns a struct
 %   including the individual results for every scenario.
 
+%   AC-CFM
+%   Copyright (c) 2020, Matthias Noebels
+%   This file is part of AC-CFM.
+%   Covered by the 3-clause BSD License (see LICENSE file for details).
+
     % use default settings if not defined
     if ~exist('settings', 'var')
         settings = get_default_settings();
@@ -17,19 +22,19 @@ function result = accfm_branch_scenarios(network, scenarios, settings)
     contingency = zeros(number_of_scenarios, 1);
     lost_load_final = zeros(number_of_scenarios, 1);
     
-    tripped_buses_in_generation = zeros(number_of_scenarios, settings.max_iterations);
+    tripped_buses_in_generation = zeros(number_of_scenarios, settings.max_recursion_depth);
     tripped_buses_in_scenario = zeros(number_of_scenarios, size(network.bus, 1), 'logical');
     
-    tripped_lines_in_generation = zeros(number_of_scenarios, settings.max_iterations);
+    tripped_lines_in_generation = zeros(number_of_scenarios, settings.max_recursion_depth);
     tripped_lines_in_scenario = zeros(number_of_scenarios, size(network.branch, 1), 'logical');
     line_criticality = zeros(size(network.branch, 1), 1);
     
     ufls_buses = zeros(number_of_scenarios, size(network.bus, 1), 'logical');
     uvls_buses = zeros(number_of_scenarios, size(network.bus, 1), 'logical');
-    tripped_gens_in_generation = zeros(number_of_scenarios, settings.max_iterations);
+    tripped_gens_in_generation = zeros(number_of_scenarios, settings.max_recursion_depth);
     tripped_gens_in_scenario = zeros(number_of_scenarios, size(network.gen, 1), 'logical');
     
-    lost_load = zeros(number_of_scenarios, settings.max_iterations);
+    lost_load = zeros(number_of_scenarios, settings.max_recursion_depth);
     ls_ufls = zeros(number_of_scenarios, 1);
     ls_uvls = zeros(number_of_scenarios, 1);
     ls_vcls = zeros(number_of_scenarios, 1);
@@ -51,17 +56,14 @@ function result = accfm_branch_scenarios(network, scenarios, settings)
     % output progress if not running on cluster
     startTime = tic;
     if ~isdeployed
-        fprintf('\t Completion: ');
-        showTimeToCompletion;
-        p = parfor_progress( number_of_scenarios );
+        parfor_progress( number_of_scenarios );
     end
     
     % use parallel computing toolbox
     parfor i = 1:number_of_scenarios
         %output progress if not running on cluster
         if ~isdeployed
-            p = parfor_progress;
-            showTimeToCompletion( p/100, [], [], startTime );
+            parfor_progress;
         else
             fprintf('Scenario %d', i);
         end

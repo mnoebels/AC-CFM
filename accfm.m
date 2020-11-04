@@ -4,6 +4,11 @@ function result_cascade = accfm(network, initial_contingency, settings)
 %   network with initial_contingency and settings
 %   result_cascade = accfm( ___ ) returns the cascade result structure
 
+%   AC-CFM
+%   Copyright (c) 2020, Matthias Noebels
+%   This file is part of AC-CFM.
+%   Covered by the 3-clause BSD License (see LICENSE file for details).
+
     % define matpower constants
     define_constants;
     
@@ -43,12 +48,12 @@ function result_cascade = accfm(network, initial_contingency, settings)
     network.branch_id = (1:size(network.branch, 1)).';
     
     % add custom fields for result variables
-    network.branch_tripped = zeros(size(network.branch, 1), settings.max_iterations);
-    network.bus_tripped = zeros(size(network.bus, 1), settings.max_iterations);
-    network.bus_uvls = zeros(size(network.bus, 1), settings.max_iterations);
-    network.bus_ufls = zeros(size(network.bus, 1), settings.max_iterations);
-    network.gen_tripped = zeros(size(network.gen, 1), settings.max_iterations);
-    network.load = zeros(settings.max_iterations, 1);
+    network.branch_tripped = zeros(size(network.branch, 1), settings.max_recursion_depth);
+    network.bus_tripped = zeros(size(network.bus, 1), settings.max_recursion_depth);
+    network.bus_uvls = zeros(size(network.bus, 1), settings.max_recursion_depth);
+    network.bus_ufls = zeros(size(network.bus, 1), settings.max_recursion_depth);
+    network.gen_tripped = zeros(size(network.gen, 1), settings.max_recursion_depth);
+    network.load = zeros(settings.max_recursion_depth, 1);
     network.generation_before = sum(network.gen(:, PG));
     network.pf_count = 0;
     
@@ -130,7 +135,7 @@ function network = apply_recursion(network, settings, i, k, Gnode_parent)
     end
     
     % error if iteration limit reached
-    if i + k > settings.max_iterations
+    if i + k > settings.max_recursion_depth
         error('Iteration limit reached');
     end
     
@@ -172,7 +177,7 @@ function network = apply_recursion(network, settings, i, k, Gnode_parent)
             island.bus(island.bus(:, BUS_TYPE) == PQ & ismember(island.bus(:, BUS_I), island.gen(:, GEN_BUS)), BUS_TYPE) = PV;
             
             % initialise result variables
-            island.load = zeros(settings.max_iterations, 1);
+            island.load = zeros(settings.max_recursion_depth, 1);
             island.generation_before = sum(island.gen(:, PG));
             island.pf_count = 0;
             

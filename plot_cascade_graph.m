@@ -1,7 +1,12 @@
 function H = plot_cascade_graph(result)
-% PLOT_GRAPH plots the cascade graph returned by the AC-CFM
+% PLOT_CASCADE_GRAPH plots the cascade graph returned by the AC-CFM
 %   plot_cascade_graph(result) plots the cascade graph in result.
 %   H = plot_cascade_graph( ___ ) returns the GraphPlot object.
+
+%   AC-CFM
+%   Copyright (c) 2020, Matthias Noebels
+%   This file is part of AC-CFM.
+%   Covered by the 3-clause BSD License (see LICENSE file for details).
 
     % group isolated nodes for better visibility
     ISLEdges = find(ismember(result.G.Edges.Type, 'ISL'));

@@ -1,4 +1,13 @@
 function load_at_time = get_load_vs_time(result)
+% GET_LOAD_VS_TIME converts cascade generations into times
+%   Conversion is based on a probability distribution of outage time
+%   differences.
+
+%   AC-CFM
+%   Copyright (c) 2020, Matthias Noebels
+%   This file is part of AC-CFM.
+%   Covered by the 3-clause BSD License (see LICENSE file for details).
+
     [load_at_time, t] = apply_recursion(digraph(result.G.Edges, result.G.Nodes), 'event', 1, zeros(1000, 3));
     
     initial = findnode(result.G, 'root');

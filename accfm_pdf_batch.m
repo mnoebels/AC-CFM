@@ -1,13 +1,19 @@
-function result = accfm_pdf_batch(network, pdf, alpha, number_of_scenarios, settings, output_file)
+function result = accfm_pdf_batch(network, distribName, distribParams, number_of_scenarios, settings, output_file)
 % batch processing for the AC Cascading Fault Model following a probability
 % distribution
-%   accfm_pdf_batch(network, pdf, alpha, number_of_scenarios, output_file) 
+%   accfm_pdf_batch(network, distribName, distribParams, number_of_scenarios, output_file) 
 %   runs the AC-CFM in network, which can either be a matpower case struct
 %   or a filename of a matpower case file for number_of_scenarios scenarios
 %   with the initial contingency size following a probability distribution
-%   specified in pdf and defined by parameter alpha. Currently, only 'zipf'
-%   can be used as a pdf. The results are stored in the file specified in
-%   output_file.
+%   specified by distribName and defined by parameters distribParams. Call 
+%   randraw for a list of available distributions.
+%   The results are stored in the file specified in output_file.
+%   You may want to run rng('shuffle') before calling this function.
+
+%   AC-CFM
+%   Copyright (c) 2020, Matthias Noebels
+%   This file is part of AC-CFM.
+%   Covered by the 3-clause BSD License (see LICENSE file for details).
 
     % load the network if it is given as a file
     if (isstring(network) || ischar(network)) && isfile(network)
@@ -27,11 +33,11 @@ function result = accfm_pdf_batch(network, pdf, alpha, number_of_scenarios, sett
     end
 
     % convert non-numeric input parameters
-    if ~isnumeric(alpha)
-        alpha = str2double(alpha);
+    if ~isnumeric(distribParams)
+        distribParams = str2num(distribParams);
     end
     if ~isnumeric(number_of_scenarios)
-        number_of_scenarios = str2double(number_of_scenarios);
+        number_of_scenarios = str2num(number_of_scenarios);
     end
     
     % model settings
@@ -40,10 +46,7 @@ function result = accfm_pdf_batch(network, pdf, alpha, number_of_scenarios, sett
     end
 	
     % create the initial contingecies
-	rng('shuffle');
-	if strcmp(pdf, 'zipf')
-		contingencies = zipfrnd(alpha, [number_of_scenarios 1]);
-	end
+	contingencies = round(randraw(distribName, distribParams, number_of_scenarios));
 
 	scenarios = cell(number_of_scenarios, 1);
     for i = 1:number_of_scenarios
@@ -69,9 +72,7 @@ function result = accfm_pdf_batch(network, pdf, alpha, number_of_scenarios, sett
         % output progress if not running on cluster
         startTime = tic;
         if ~isdeployed
-            fprintf('\t Completion: ');
-            showTimeToCompletion;
-            p = parfor_progress( number_of_scenarios );
+            parfor_progress( number_of_scenarios );
         end
         
         result(number_of_scenarios) = struct('version', [], 'baseMVA', [], 'bus', [], 'gen', [], 'branch', [], 'gencost', [], 'success', [], 'branch_tripped', [], 'bus_tripped', [], 'bus_uvls', [], 'bus_ufls', [], 'gen_tripped', [], 'load', [], 'pf_count', [], 'ls_total', [], 'ls_ufls', [], 'ls_uvls', [], 'ls_vcls', [], 'ls_opf', [], 'ls_tripped', [], 'elapsed', []);
@@ -79,8 +80,7 @@ function result = accfm_pdf_batch(network, pdf, alpha, number_of_scenarios, sett
         parfor i = 1:number_of_scenarios
             % output progress if not running on cluster
             if ~isdeployed
-                p = parfor_progress;
-                showTimeToCompletion( p/100, [], [], startTime );
+                parfor_progress;
             else
                 fprintf('Scenario %d', i);
             end

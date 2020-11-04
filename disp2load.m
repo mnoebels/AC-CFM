@@ -1,6 +1,11 @@
 function network = disp2load(network)
-%DISP2LOAD converts dispatchable loads to fixed loads.
+% DISP2LOAD converts dispatchable loads to fixed loads.
 %   It is the inverse of the load2disp function supplied with Matpower.
+
+%   AC-CFM
+%   Copyright (c) 2020, Matthias Noebels
+%   This file is part of AC-CFM.
+%   Covered by the 3-clause BSD License (see LICENSE file for details).
 
     define_constants;
 
