@@ -164,7 +164,7 @@ The following options are available:
 
 * Q_tolerance (0 to 1): Ratio of reactive power limits that can be exceeded before O/UXL is applied.
 
-* DC_fallback (0 or 1): If set to 0, islands black out if AC-OPF does not converge. This usually happens in highly imbalanced islands. If set to 1, a fallback to DC-OPF is possible.
+* grid_forming (cell array): Generator types (see Matpower function `gentypes`) that have grid-forming capability. Every island needs to have at least one grid-forming generator. Requires that the network struct contains a field `gentypes`. Set to empty to ignore requirement for grid-forming generators.
 
 * keep_networks_after_cascade (0 or 1): In batch processing, keep final network struct for each contingency. This significantly increases required memory.
 
@@ -173,6 +173,6 @@ The following options are available:
 
 If you run into problems, for instance exceptionally large load shedding or large amount of OPF load shedding, try the following:
 
-1. Set PMIN (column 10) of the gen matrix to zero.
+1. Set PMIN (column 10) of the gen matrix to zero to disable minimum power output limits of generators.
 2. Increase the reactive power limits (columns 4 and 5) of the gen matrix (e.g. to +80% and -40% of PMAX).
 3. Loads should be fixed (not dispatchable) before passed to AC-CFM. You can use the disp2load function provided to convert dispatchable loads to fixed loads.

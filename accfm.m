@@ -213,8 +213,11 @@ function network = apply_recursion(network, settings, i, k, Gnode_parent)
         
         %network_before = network;
             
-        % deactivate all buses if there is no generation available
-        if sum(network.gen(network.gen(:, PMAX) > 0 & network.gen(:, GEN_STATUS) == 1, PMAX)) == 0
+        % deactivate all buses if there is
+        % - no active generation available
+        % - no grid-forming generation available and this is required
+        % - no loads connected
+        if (sum(network.gen(network.gen(:, PMAX) > 0 & network.gen(:, GEN_STATUS) == 1, PMAX)) == 0) || (~isempty(settings.grid_forming) && isfield(network, 'gentype') && ~any(ismember(network.gentype(network.gen(:, GEN_STATUS) == 1), settings.grid_forming))) || sum(network.bus(:, PD)) == 0
 
             network.G.Edges.LS(outedges(network.G, Gnode_parent)) = sum(network.bus(:, PD));
             network.G.Nodes.Type(findnode(network.G, Gnode_parent)) = {'failure'};
@@ -227,7 +230,18 @@ function network = apply_recursion(network, settings, i, k, Gnode_parent)
             
             if settings.verbose
                 fprintf(repmat(' ', 1, i - k))
-                fprintf(' No generation available.\n\n');
+                
+                if (~isempty(settings.grid_forming) && isfield(network, 'gentype') && ~any(ismember(network.gentype(network.gen(:, GEN_STATUS) == 1), settings.grid_forming)))
+                    fprintf(' No grid-forming generation available.');
+                elseif sum(network.gen(network.gen(:, PMAX) > 0 & network.gen(:, GEN_STATUS) == 1, PMAX)) == 0
+                    fprintf(' No generation available.');
+                end
+                
+                if sum(network.bus(:, PD)) == 0
+                    fprintf(' No load connected.');
+                end
+                    
+                fprintf('\n\n');
             end
         end
             
@@ -238,7 +252,8 @@ function network = apply_recursion(network, settings, i, k, Gnode_parent)
             conditions_changed = 0;
             exceeded_lines = [];
             exceeded_buses = [];
-            exceeded_gens = [];
+            exceeded_gens_p = [];
+            exceeded_gens_q = [];
 
             % make sure there is a reference bus
             network = add_reference_bus(network);
@@ -365,7 +380,7 @@ function network = apply_recursion(network, settings, i, k, Gnode_parent)
                         end
                         
                         network.gen(ind(1:gens_to_shed), [PG QG GEN_STATUS]) = zeros(gens_to_shed, 3);
-                        network.gen_tripped(ind, i) = 1;
+                        network.gen_tripped(ind(1:gens_to_shed), i) = 1;
                         
                         buses_with_active_generation = unique(network.gen(network.gen(:, GEN_STATUS) == 1, GEN_BUS));
                         pv_buses = network.bus(network.bus(:, BUS_TYPE) == PV, BUS_I);
@@ -399,15 +414,15 @@ function network = apply_recursion(network, settings, i, k, Gnode_parent)
             if ~conditions_changed
                 
                 % get exceeded branches, buses and generators
-                %exceeded_lines = find(round(max([sqrt(network.branch(:, PF).^2 + network.branch(:, QF).^2) sqrt(network.branch(:, PT).^2 + network.branch(:, QT).^2)], [], 2), 5) > round(network.branch(:, RATE_A) * 1.01, 5));
                 exceeded_lines = find(round(mean([sqrt(network.branch(:, PF).^2 + network.branch(:, QF).^2) sqrt(network.branch(:, PT).^2 + network.branch(:, QT).^2)], 2), 5) > round(network.branch(:, RATE_A) * 1.01, 5));
                 exceeded_buses = find(network.bus(:, BUS_TYPE) ~= NONE & (round(network.bus(:, VM), 3) < network.bus(:, VMIN)) & (network.bus(:, PD) > 0 | network.bus(:, QD) > 0));
-                exceeded_gens = find(network.gen(:, QG) - network.gen(:, QMIN) < -abs(settings.Q_tolerance * network.gen(:, QMIN)) | network.gen(:, QG) - network.gen(:, QMAX) > abs(settings.Q_tolerance * network.gen(:, QMAX)));
+                exceeded_gens_p = find(network.gen(:, PG) < network.gen(:, PMIN) & network.gen(:, GEN_STATUS) == 1);
+                exceeded_gens_q = find(network.gen(:, QG) - network.gen(:, QMIN) < -abs(settings.Q_tolerance * network.gen(:, QMIN)) | network.gen(:, QG) - network.gen(:, QMAX) > abs(settings.Q_tolerance * network.gen(:, QMAX)));
                 
                 %% O/UXL
                 
-                % exceeded generators
-                if ~isempty(exceeded_gens)
+                % exceeded generator Q limits
+                if ~isempty(exceeded_gens_q)
                     % O/UXL
                     
                     if size(network.bus, 1) == 1
@@ -420,17 +435,17 @@ function network = apply_recursion(network, settings, i, k, Gnode_parent)
                         network.bus(:, [PD QD]) = ls_factor * network.bus(:, [PD QD]);
                     else
                         % convert buses to PQ
-                        network.bus(network.bus(:, BUS_TYPE) ~= NONE & ismember(network.bus(:, BUS_I), network.gen(exceeded_gens, GEN_BUS)), BUS_TYPE) = PQ;
+                        network.bus(network.bus(:, BUS_TYPE) ~= NONE & ismember(network.bus(:, BUS_I), network.gen(exceeded_gens_q, GEN_BUS)), BUS_TYPE) = PQ;
 
                         % set Q output to closest limit
-                        network.gen(intersect(exceeded_gens, find(network.gen(:, QG) < network.gen(:, QMIN))), QG) = network.gen(intersect(exceeded_gens, find(network.gen(:, QG) < network.gen(:, QMIN))), QMIN);
-                        network.gen(intersect(exceeded_gens, find(network.gen(:, QG) > network.gen(:, QMAX))), QG) = network.gen(intersect(exceeded_gens, find(network.gen(:, QG) > network.gen(:, QMAX))), QMAX);
+                        network.gen(intersect(exceeded_gens_q, find(network.gen(:, QG) < network.gen(:, QMIN))), QG) = network.gen(intersect(exceeded_gens_q, find(network.gen(:, QG) < network.gen(:, QMIN))), QMIN);
+                        network.gen(intersect(exceeded_gens_q, find(network.gen(:, QG) > network.gen(:, QMAX))), QG) = network.gen(intersect(exceeded_gens_q, find(network.gen(:, QG) > network.gen(:, QMAX))), QMAX);
                     end
                     
                     if settings.verbose
                         fprintf(repmat(' ', 1, i - k))
                         fprintf(' Q outside limits at generators at buses');
-                        fprintf(repmat(' %d', 1, length(exceeded_gens)), network.gen(exceeded_gens, GEN_BUS));
+                        fprintf(repmat(' %d', 1, length(exceeded_gens_q)), network.gen(exceeded_gens_q, GEN_BUS));
                         fprintf('\n');
                     end
                     
@@ -438,7 +453,37 @@ function network = apply_recursion(network, settings, i, k, Gnode_parent)
                         Gnode_name = get_hash();
                         network.G = addnode(network.G, table({Gnode_name}, size(network.bus, 1), {''}, sum(network.bus(:, PD)), length(find(network.gen(:, GEN_STATUS) == 1)), length(find(network.branch(:, BR_STATUS) == 1)), 'VariableNames', {'Name', 'Buses', 'Type', 'Load', 'Generators', 'Lines'}));
                     end
-                    network.G = addedge(network.G, table({Gnode_parent Gnode_name}, {'XL'}, length(exceeded_gens), size(network.gen, 1), NaN, 'VariableNames', {'EndNodes', 'Type', 'Weight', 'Base', 'LS'}));
+                    network.G = addedge(network.G, table({Gnode_parent Gnode_name}, {'XL'}, length(exceeded_gens_q), size(network.gen, 1), NaN, 'VariableNames', {'EndNodes', 'Type', 'Weight', 'Base', 'LS'}));
+                end
+                
+                %% ULGT
+                
+                % exceeded lower generator P limit
+                if ~isempty(exceeded_gens_p)
+                    % ULGT
+                    
+                    network.gen(exceeded_gens_p, [PG QG GEN_STATUS]) = zeros(length(exceeded_gens_p), 3);
+                    
+                    network.gen_tripped(exceeded_gens_p, i) = 1;
+
+                    buses_with_active_generation = unique(network.gen(network.gen(:, GEN_STATUS) == 1, GEN_BUS));
+                    pv_buses = network.bus(network.bus(:, BUS_TYPE) == PV, BUS_I);
+                    network.bus(ismember(network.bus(:, BUS_I), setdiff(pv_buses, buses_with_active_generation)), BUS_TYPE) = PQ;
+
+                    network = add_reference_bus(network);
+                    
+                    if settings.verbose
+                        fprintf(repmat(' ', 1, i - k))
+                        fprintf(' Generators at buses tripped due to underload');
+                        fprintf(repmat(' %d', 1, length(exceeded_gens_p)), network.gen(exceeded_gens_p, GEN_BUS));
+                        fprintf('\n');
+                    end
+                    
+                    if isempty(Gnode_name)
+                        Gnode_name = get_hash();
+                        network.G = addnode(network.G, table({Gnode_name}, size(network.bus, 1), {''}, sum(network.bus(:, PD)), length(find(network.gen(:, GEN_STATUS) == 1)), length(find(network.branch(:, BR_STATUS) == 1)), 'VariableNames', {'Name', 'Buses', 'Type', 'Load', 'Generators', 'Lines'}));
+                    end
+                    network.G = addedge(network.G, table({Gnode_parent Gnode_name}, {'ULGT'}, length(exceeded_gens_p), size(network.gen, 1), NaN, 'VariableNames', {'EndNodes', 'Type', 'Weight', 'Base', 'LS'}));
                 end
                 
                 %% UVLS
@@ -539,7 +584,7 @@ function network = apply_recursion(network, settings, i, k, Gnode_parent)
             network.G.Nodes.Load(findnode(network.G, Gnode_parent)) = sum(network.bus(:, PD));
             
             % cascade continues
-            if sum(network.bus(:, PD)) > 0 && (conditions_changed || ~isempty(exceeded_lines) || ~isempty(exceeded_buses) || ~isempty(exceeded_gens))
+            if sum(network.bus(:, PD)) > 0 && (conditions_changed || ~isempty(exceeded_lines) || ~isempty(exceeded_buses) || ~isempty(exceeded_gens_p) || ~isempty(exceeded_gens_q))
                 % INDUCTION CASE
                 network = apply_recursion(network, settings, i + 1, k + 1, Gnode_parent);
                 
@@ -548,7 +593,9 @@ function network = apply_recursion(network, settings, i, k, Gnode_parent)
                 % BASE CASE
                 network.load(i:end) = sum(network.bus(:, PD));
                 
-                network.G.Nodes.Type(findnode(network.G, Gnode_parent)) = {'success'};
+                if network.success == 1
+                    network.G.Nodes.Type(findnode(network.G, Gnode_parent)) = {'success'};
+                end
             end
         end
     end
@@ -599,6 +646,10 @@ function network = distribute_slack(network, network_prev, settings)
     % determine the change in slack generation since previous generation
     slack_change = network.gen(slack_gen, PG) - network_prev.gen(slack_gen, PG);
     
+    if slack_change < 1
+        return
+    end
+    
     % determines the share of each generator on the entire capacity
     factors = network.gen(gens, PMAX) / sum(network.gen(gens, PMAX));
     
@@ -613,17 +664,28 @@ function network = distribute_slack(network, network_prev, settings)
     network.pf_count = network.pf_count + 1;
 
     % it might be that some generators now exceed their capacity
-    while ~isempty(find(network.gen(:, PG) > network.gen(:, PMAX), 1))
+    while ~isempty(find(network.gen(:, PG) > network.gen(:, PMAX), 1)) || ~isempty(find(network.gen(:, PG) < network.gen(:, PMIN) & network.gen(:, GEN_STATUS) == 1, 1))
         % this is the total exceeding generation
-        overhead = sum(network.gen(network.gen(:, PG) > network.gen(:, PMAX), PG) - network.gen(network.gen(:, PG) > network.gen(:, PMAX), PMAX));
+        surplus = sum(network.gen(network.gen(:, PG) > network.gen(:, PMAX), PG) - network.gen(network.gen(:, PG) > network.gen(:, PMAX), PMAX));
+        
+        % this is the total missing generation
+        deficit = -sum(network.gen(network.gen(:, PG) < network.gen(:, PMIN) & network.gen(:, GEN_STATUS) == 1, PG) - network.gen(network.gen(:, PG) < network.gen(:, PMIN) & network.gen(:, GEN_STATUS) == 1, PMIN));
         
         % set the generators that exceed their capacity to their maximum
         % output
         network.gen(network.gen(:, PG) > network.gen(:, PMAX), PG) = network.gen(network.gen(:, PG) > network.gen(:, PMAX), PMAX);
+        
+        % set the generators that fall below their capacity to their
+        % minimum output
+        network.gen(network.gen(:, PG) < network.gen(:, PMIN) & network.gen(:, GEN_STATUS) == 1, PG) = network.gen(network.gen(:, PG) < network.gen(:, PMIN) & network.gen(:, GEN_STATUS) == 1, PMIN);
 
         % the overhead generation is shared over the remaining generators
-        oh_factor = overhead / sum(network.gen(network.gen(:, PG) < network.gen(:, PMAX), PG));
-        network.gen(network.gen(:, PG) < network.gen(:, PMAX), PG) = round((1 + oh_factor) * network.gen(network.gen(:, PG) < network.gen(:, PMAX), PG), 4);
+        sp_factor = surplus / sum(network.gen(network.gen(:, PG) < network.gen(:, PMAX), PG));
+        network.gen(network.gen(:, PG) < network.gen(:, PMAX), PG) = round((1 + sp_factor) * network.gen(network.gen(:, PG) < network.gen(:, PMAX), PG), 4);
+        
+        % the deficit generation is shared over the remaining generators
+        df_factor = deficit / sum(network.gen(network.gen(:, PG) > network.gen(:, PMIN) & network.gen(:, GEN_STATUS) == 1, PG));
+        network.gen(network.gen(:, PG) > network.gen(:, PMIN) & network.gen(:, GEN_STATUS) == 1, PG) = round((1 + df_factor) * network.gen(network.gen(:, PG) > network.gen(:, PMIN) & network.gen(:, GEN_STATUS) == 1, PG), 4);
         
         % this is repeated until there is no exceeding generation
     end
@@ -689,12 +751,83 @@ function [network, Gnode_parent] = apply_vcls(network, settings, Gnode_parent, i
     % convert all loads to dispatchable loads
     network_disp = load2disp(network_disp);
 
+    % run OPF and adjust network
+    [network, Gnode_parent, opf_success] = apply_opf(network, network_disp, settings, Gnode_parent, i, k);
+
+    % OPF did not converge
+    if opf_success == 0 && any(network_disp.gen(:, PMIN) > 0)
+        
+        % disable generator PMIN limits
+        network_disp.gen(network_disp.gen(:, 10) > 0, PMIN) = 0;
+        
+        % run OPF and adjust network
+        [network, Gnode_parent, opf_success] = apply_opf(network, network_disp, settings, Gnode_parent, i, k);
+    end
+    
+    % remove shunt devices if OPF still doesn't converge
+    if opf_success == 0
+        
+        % remove shunt devices
+        network_disp.bus(:, BS) = 0;
+        
+        network_no_shunt = network;
+        network_no_shunt.bus(:, BS) = 0;
+        
+        % run OPF and adjust network
+        [network_no_shunt, Gnode_parent, opf_success] = apply_opf(network_no_shunt, network_disp, settings, Gnode_parent, i, k);
+        
+        if opf_success == 1
+            
+            if settings.verbose
+                fprintf(repmat(' ', 1, i - k))
+                fprintf(' Tripping shunt devices');
+                fprintf('\n');
+            end
+            
+            shunt_devices = length(find(network.bus(:, BS)));
+            network = network_no_shunt;
+            
+            Gnode_name = get_hash();
+            network.G = addnode(network.G, table({Gnode_name}, size(network.bus, 1), {''}, sum(network.bus(:, PD)), length(find(network.gen(:, GEN_STATUS) == 1)), length(find(network.branch(:, BR_STATUS) == 1)), 'VariableNames', {'Name', 'Buses', 'Type', 'Load', 'Generators', 'Lines'}));
+            network.G = addedge(network.G, table({Gnode_parent Gnode_name}, {'SH'}, shunt_devices, shunt_devices, NaN, 'VariableNames', {'EndNodes', 'Type', 'Weight', 'Base', 'LS'}));
+            Gnode_parent = Gnode_name;
+        end
+    end
+    
+    % if it still doesn't converge, then trip the island
+    if opf_success == 0
+        % trip island
+        if settings.verbose
+            fprintf(repmat(' ', 1, i - k))
+            fprintf(' OPF failed. Check constraints. Island tripped (%d buses).\n', size(network_disp.bus, 1));
+        end
+
+        network = trip_nodes(network, network.bus(:, BUS_I));
+        network.bus_tripped(:, i) = 1;
+
+        Gnode_name = get_hash();
+        network.G = addnode(network.G, table({Gnode_name}, size(network.bus, 1), {'failure'}, 0, 0, 0, 'VariableNames', {'Name', 'Buses', 'Type', 'Load', 'Generators', 'Lines'}));
+        network.G = addedge(network.G, table({Gnode_parent Gnode_name}, {'OPF'}, 1, load_initial, load_initial, 'VariableNames', {'EndNodes', 'Type', 'Weight', 'Base', 'LS'}));
+        Gnode_parent = Gnode_name;
+    end
+end
+
+function [network, Gnode_parent, opf_success] = apply_opf(network, network_disp, settings, Gnode_parent, i, k)
+% APPLY_OPF runs an optimal power flow on the modified (dispatchable)
+% network_disp and applies any load shedding that occured to network
+
+    define_constants;
+    
+    load_initial = sum(network.bus(:, PD));
+
     % use a faster OPF solver if available
     if have_fcn('ipopt')
         results_disp = runopf(network_disp, mpoption(settings.mpopt, 'opf.ac.solver', 'IPOPT'));
     else
         results_disp = runopf(network_disp, settings.mpopt);
     end
+    
+    opf_success = results_disp.success;
 
     % OPF converged
     if results_disp.success == 1
@@ -704,36 +837,38 @@ function [network, Gnode_parent] = apply_vcls(network, settings, Gnode_parent, i
 
         % determine which loads to shed
         loads_shed = find(results_disp.gen(:, PMIN) < 0 & round(results_disp.gen(:, PG)) > round(results_disp.gen(:, PMIN)));
+        
+        ls = 0;
+        if ~isempty(loads_shed)
 
-        % apply VCLS
-        ls = 1 - sum(-results_disp.gen(results_disp.gen(:, PMIN) < 0, PG)) / sum(-results_disp.gen(results_disp.gen(:, PMIN) < 0, PMIN));
+            % apply VCLS
+            ls = 1 - sum(-results_disp.gen(results_disp.gen(:, PMIN) < 0, PG)) / sum(-results_disp.gen(results_disp.gen(:, PMIN) < 0, PMIN));
 
-        network.bus_uvls(ismember(network.bus(:, BUS_I), results_disp.gen(results_disp.gen(:, PMIN) < 0, GEN_BUS)), i) = 1 + results_disp.gen(results_disp.gen(:, PMIN) < 0, PG) ./ network.bus(ismember(network.bus(:, BUS_I), results_disp.gen(results_disp.gen(:, PMIN) < 0, GEN_BUS)), PD);
+            network.bus_uvls(ismember(network.bus(:, BUS_I), results_disp.gen(results_disp.gen(:, PMIN) < 0, GEN_BUS)), i) = 1 + results_disp.gen(results_disp.gen(:, PMIN) < 0, PG) ./ network.bus(ismember(network.bus(:, BUS_I), results_disp.gen(results_disp.gen(:, PMIN) < 0, GEN_BUS)), PD);
 
-        network.bus(ismember(network.bus(:, BUS_I), results_disp.gen(results_disp.gen(:, PMIN) < 0, GEN_BUS)), PD) = -results_disp.gen(results_disp.gen(:, PMIN) < 0, PG);
-        network.bus(ismember(network.bus(:, BUS_I), results_disp.gen(results_disp.gen(:, PMIN) < 0, GEN_BUS)), QD) = -results_disp.gen(results_disp.gen(:, PMIN) < 0, QG);
+            network.bus(ismember(network.bus(:, BUS_I), results_disp.gen(results_disp.gen(:, PMIN) < 0, GEN_BUS)), PD) = -results_disp.gen(results_disp.gen(:, PMIN) < 0, PG);
+            network.bus(ismember(network.bus(:, BUS_I), results_disp.gen(results_disp.gen(:, PMIN) < 0, GEN_BUS)), QD) = -results_disp.gen(results_disp.gen(:, PMIN) < 0, QG);
 
-        if settings.verbose
-            fprintf(repmat(' ', 1, i - k))
-            fprintf(' Loads shed (%.2f%%) due to voltage collapse at buses', ls * 100);
-            fprintf(repmat(' %d', 1, length(loads_shed)), results_disp.gen(loads_shed, GEN_BUS));
-            fprintf('\n');
+            if settings.verbose
+                fprintf(repmat(' ', 1, i - k))
+                fprintf(' Loads shed (%.2f%%) due to voltage collapse at buses', ls * 100);
+                fprintf(repmat(' %d', 1, length(loads_shed)), results_disp.gen(loads_shed, GEN_BUS));
+                fprintf('\n');
+            end
         end
 
-        loads = results_disp.gen(results_disp.gen(:, 10) < 0, :);
-        results_disp.bus(ismember(results_disp.bus(:, 1), loads(:, 1)), [3 4]) = -loads(:, [2 3]);
-        results_disp.gencost(results_disp.gen(:, 10) < 0, :) = [];
-        results_disp.gen(results_disp.gen(:, 10) < 0, :) = [];
+        results_disp.gen(results_disp.gen(:, PMIN) < 0, :) = [];
 
+        % keep new voltages and generator outputs
         network.gen(:, [PG QG VG]) = results_disp.gen(:, [PG QG VG]);
-        
+
         % run PF with the new settings to see if it converges now
         result = runpf(network, settings.mpopt);
         network.pf_count = network.pf_count + 1;
-        
+
         if result.success
             % yes: proceed
-            
+
             Gnode_name = get_hash();
             network.G = addnode(network.G, table({Gnode_name}, size(network.bus, 1), {''}, sum(network.bus(:, PD)), length(find(network.gen(:, GEN_STATUS) == 1)), length(find(network.branch(:, BR_STATUS) == 1)), 'VariableNames', {'Name', 'Buses', 'Type', 'Load', 'Generators', 'Lines'}));
             network.G = addedge(network.G, table({Gnode_parent Gnode_name}, {'VC'}, ls, load_initial, ls * load_initial, 'VariableNames', {'EndNodes', 'Type', 'Weight', 'Base', 'LS'}));
@@ -754,47 +889,7 @@ function [network, Gnode_parent] = apply_vcls(network, settings, Gnode_parent, i
             network.G = addedge(network.G, table({Gnode_parent Gnode_name}, {'OPF'}, 1, load_initial, load_initial, 'VariableNames', {'EndNodes', 'Type', 'Weight', 'Base', 'LS'}));
             Gnode_parent = Gnode_name;
         end
-
-    % OPF did not converge
-    else
-        dc_exceeded_lines = [];
         
-        if settings.DC_fallback && ~isempty(network.bus(network.bus(:, BUS_TYPE) == REF))
-
-            result = runpf(network, mpoption(settings.mpopt, 'model', 'DC'));
-            dc_exceeded_lines = find(abs(result.branch(:, PF)) > result.branch(:, RATE_A));
-            
-            if ~isempty(dc_exceeded_lines)
-                if settings.verbose
-                    fprintf(repmat(' ', 1, i - k))
-                    fprintf(' OPF failed, but DC converged. Tripped %d lines.\n', length(dc_exceeded_lines));
-                end
-                
-                network.branch(dc_exceeded_lines, BR_STATUS) = 0;
-                network.branch_tripped(dc_exceeded_lines, i) = 1;
-
-                Gnode_name = get_hash();
-                network.G = addnode(network.G, table({Gnode_name}, size(network.bus, 1), {''}, sum(network.bus(:, PD)), length(find(network.gen(:, GEN_STATUS) == 1)), length(find(network.branch(:, BR_STATUS) == 1)), 'VariableNames', {'Name', 'Buses', 'Type', 'Load', 'Generators', 'Lines'}));
-                network.G = addedge(network.G, table({Gnode_parent Gnode_name}, {'DC'}, length(dc_exceeded_lines), 1, NaN, 'VariableNames', {'EndNodes', 'Type', 'Weight', 'Base', 'LS'}));
-                Gnode_parent = Gnode_name;
-            end
-        end
-        
-        if ~settings.DC_fallback || isempty(network.bus(network.bus(:, BUS_TYPE) == REF)) || isempty(dc_exceeded_lines)
-            % trip island
-            if settings.verbose
-                fprintf(repmat(' ', 1, i - k))
-                fprintf(' OPF failed. Check constraints. Island tripped (%d buses).\n', size(network_disp.bus, 1));
-            end
-
-            network = trip_nodes(network, network.bus(:, BUS_I));
-            network.bus_tripped(:, i) = 1;
-
-            Gnode_name = get_hash();
-            network.G = addnode(network.G, table({Gnode_name}, size(network.bus, 1), {'failure'}, 0, 0, 0, 'VariableNames', {'Name', 'Buses', 'Type', 'Load', 'Generators', 'Lines'}));
-            network.G = addedge(network.G, table({Gnode_parent Gnode_name}, {'OPF'}, 1, load_initial, load_initial, 'VariableNames', {'EndNodes', 'Type', 'Weight', 'Base', 'LS'}));
-            Gnode_parent = Gnode_name;
-        end
     end
 end
 

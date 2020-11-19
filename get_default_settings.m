@@ -15,7 +15,7 @@ function settings = get_default_settings()
     settings.dP_limit = 0.15;
     settings.P_overhead = 0.1;
     settings.Q_tolerance = 0.1;
-    settings.DC_fallback = 1;
+    settings.grid_forming = {'PS', 'ST', 'GT'};
     settings.keep_networks_after_cascade = 0;
 end
 

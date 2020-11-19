@@ -33,7 +33,7 @@ function [load_at_time, t] = apply_recursion(G, node, t, load_at_time)
         end
         t = t_this;
     elseif length(nid) == 1
-        if any(strcmp(G.Edges.Type(eid), 'OC'))
+        if any(strcmp(G.Edges.Type(eid), 'OL'))
             delay = round(exprnd(19.5797));
             load_at_time(t:(t + delay - 1), 1) = G.Nodes.Load(findnode(G, node));
             load_at_time(t:(t + delay - 1), 2) = G.Nodes.Generators(findnode(G, node));
