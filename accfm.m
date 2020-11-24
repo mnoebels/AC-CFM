@@ -681,11 +681,15 @@ function network = distribute_slack(network, network_prev, settings)
 
         % the overhead generation is shared over the remaining generators
         sp_factor = surplus / sum(network.gen(network.gen(:, PG) < network.gen(:, PMAX), PG));
-        network.gen(network.gen(:, PG) < network.gen(:, PMAX), PG) = round((1 + sp_factor) * network.gen(network.gen(:, PG) < network.gen(:, PMAX), PG), 4);
+        if sp_factor > 0
+            network.gen(network.gen(:, PG) < network.gen(:, PMAX), PG) = round((1 + sp_factor) * network.gen(network.gen(:, PG) < network.gen(:, PMAX), PG), 4);
+        end
         
         % the deficit generation is shared over the remaining generators
         df_factor = deficit / sum(network.gen(network.gen(:, PG) > network.gen(:, PMIN) & network.gen(:, GEN_STATUS) == 1, PG));
-        network.gen(network.gen(:, PG) > network.gen(:, PMIN) & network.gen(:, GEN_STATUS) == 1, PG) = round((1 + df_factor) * network.gen(network.gen(:, PG) > network.gen(:, PMIN) & network.gen(:, GEN_STATUS) == 1, PG), 4);
+        if df_factor > 0
+            network.gen(network.gen(:, PG) > network.gen(:, PMIN) & network.gen(:, GEN_STATUS) == 1, PG) = round((1 + df_factor) * network.gen(network.gen(:, PG) > network.gen(:, PMIN) & network.gen(:, GEN_STATUS) == 1, PG), 4);
+        end
         
         % this is repeated until there is no exceeding generation
     end
