@@ -56,7 +56,11 @@ function result = accfm_pdf_batch(network, distribName, distribParams, number_of
             n_branch = size(network.branch, 1);
         end
         
-		scenarios{i} = round(rand(contingencies(i), 1) * n_branch);
+        if contingencies{i} > n_branch
+            contingencies{i} = n_branch;
+        end
+        
+		scenarios{i} = randperm(n_branch, contingencies(i));
     end
     
     if ~iscell(network)
