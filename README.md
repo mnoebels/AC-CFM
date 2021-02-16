@@ -5,7 +5,7 @@ AC cascading failure model based on MATPOWER for resilience analysis of power ne
 
 We request that publications derived from the use of AC-CFM explicitly acknowledge that fact by citing the following publication:
 
-Noebels, M., Preece, R., Panteli, M. "An AC Cascading Failure Model for Resilience Analysis in Power Networks," IEEE Systems Journal (accepted).
+Noebels, M., Preece, R., Panteli, M. "AC Cascading Failure Model for Resilience Analysis in Power Networks." IEEE Systems Journal (2020).
 
 <!-- GETTING STARTED -->
 ## Getting Started
