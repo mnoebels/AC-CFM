@@ -646,7 +646,8 @@ function network = distribute_slack(network, network_prev, settings)
     % determine the change in slack generation since previous generation
     slack_change = network.gen(slack_gen, PG) - network_prev.gen(slack_gen, PG);
     
-    if slack_change < 1
+    % accept a small change in slack generation without distribution
+    if abs(slack_change) < 1
         return
     end
     
